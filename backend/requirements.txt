@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-dotenv
+websockets
+cachetools
+futu-api
+questrade-api
