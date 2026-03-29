@@ -5,3 +5,4 @@ websockets
 cachetools
 futu-api
 questrade-api
+mcp

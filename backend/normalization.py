@@ -15,8 +15,16 @@ def strip_symbol(broker: str, symbol: str) -> str:
     """Normalize symbol to a unified string format."""
     if broker == "moomoo" and symbol.startswith("US."):
         return symbol[3:]
-    # Add other broker specifics here
     return symbol
+
+
+def _to_cad_usd(value: float, is_cad: bool, cad_usd_rate: float):
+    """Return (value_cad, value_usd) for a value denominated in native currency."""
+    if is_cad:
+        return value, value / cad_usd_rate
+    else:
+        # Assume USD (or USD-pegged) as the non-CAD default
+        return value * cad_usd_rate, value
 
 @cached(cache=exchange_rate_cache)
 def get_cad_usd_rate() -> float:
@@ -59,21 +67,30 @@ def get_normalized_positions() -> List[Dict[str, Any]]:
             asset_currency = pos.get("currency", "USD")
             is_cad = (asset_currency == "CAD")
             
+            open_pnl = float(pos.get("unrealized_pl", 0))
+            day_pnl  = float(pos.get("today_pl_val", 0))
+            open_pnl_cad, open_pnl_usd = _to_cad_usd(open_pnl, is_cad, cad_usd_rate)
+            day_pnl_cad,  day_pnl_usd  = _to_cad_usd(day_pnl,  is_cad, cad_usd_rate)
+
             unified_positions.append({
                 "broker": "moomoo",
                 "account_id": pos.get("account_id", "Unknown"),
                 "account_type": pos.get("account_type", "Unknown"),
                 "symbol": symbol,
                 "qty": float(pos.get("qty", 0)),
-                "closed_qty": float(pos.get("today_sell_qty", 0)), 
+                "closed_qty": float(pos.get("today_sell_qty", 0)),
                 "average_buying_price": float(pos.get("average_cost", 0)),
-                "day_pnl": float(pos.get("today_pl_val", 0)),
-                "open_pnl": float(pos.get("unrealized_pl", 0)),
+                "day_pnl": day_pnl,
+                "day_pnl_cad": day_pnl_cad,
+                "day_pnl_usd": day_pnl_usd,
+                "open_pnl": open_pnl,
+                "open_pnl_cad": open_pnl_cad,
+                "open_pnl_usd": open_pnl_usd,
                 "closed_pnl": float(pos.get("realized_pl", 0)),
                 "market_val": market_val,
                 "market_val_usd": market_val if not is_cad else market_val / cad_usd_rate,
                 "market_val_cad": market_val if is_cad else market_val * cad_usd_rate,
-                "currency": asset_currency 
+                "currency": asset_currency,
             })
 
     # Process Questrade positions
@@ -90,6 +107,11 @@ def get_normalized_positions() -> List[Dict[str, Any]]:
             asset_currency = pos.get("currency", "CAD")
             is_cad = (asset_currency == "CAD")
             
+            open_pnl = float(pos.get("openPnl", 0))
+            day_pnl  = float(pos.get("dayPnl", 0))
+            open_pnl_cad, open_pnl_usd = _to_cad_usd(open_pnl, is_cad, cad_usd_rate)
+            day_pnl_cad,  day_pnl_usd  = _to_cad_usd(day_pnl,  is_cad, cad_usd_rate)
+
             unified_positions.append({
                 "broker": "questrade",
                 "account_id": pos.get("account_id", "Unknown"),
@@ -98,13 +120,17 @@ def get_normalized_positions() -> List[Dict[str, Any]]:
                 "qty": qty,
                 "closed_qty": float(pos.get("closedQuantity", 0)),
                 "average_buying_price": float(pos.get("averageEntryPrice", 0)),
-                "day_pnl": float(pos.get("dayPnl", 0)),
-                "open_pnl": float(pos.get("openPnl", 0)),
+                "day_pnl": day_pnl,
+                "day_pnl_cad": day_pnl_cad,
+                "day_pnl_usd": day_pnl_usd,
+                "open_pnl": open_pnl,
+                "open_pnl_cad": open_pnl_cad,
+                "open_pnl_usd": open_pnl_usd,
                 "closed_pnl": float(pos.get("closedPnl", 0)),
                 "market_val": market_val,
                 "market_val_usd": market_val if not is_cad else market_val / cad_usd_rate,
                 "market_val_cad": market_val if is_cad else market_val * cad_usd_rate,
-                "currency": asset_currency
+                "currency": asset_currency,
             })
             
     return unified_positions

@@ -6,6 +6,11 @@
 - **Components:** shadcn/ui.
 - **Design Features:** Support for both dark and light modes.
 - **Data Visualization:** Dashboard to display combined holdings from multiple brokers, calculated risk levels, and recommended macro adjustments.
+- **Holdings Table:**
+  - Every monetary cell MUST display the ISO currency code of the position's native currency (e.g. `$4,638 USD`) as a muted inline badge.
+  - All columns MUST be sortable (ascending → descending → original order) with a visual indicator (↑ ↓ ⇅) on the active column header.
+  - A fuzzy-match search bar MUST be rendered above the table, filtering rows by `symbol`, `broker`, and `account_type`. No exact match required. Shows a live result count.
+- **Metrics Header:** The Net Asset Value, Unrealized PnL, and Daily PnL summary cards MUST aggregate in a user-selectable base currency (CAD by default, toggleable to USD via a pill control). Values are sourced from pre-converted `_cad` / `_usd` fields in the backend schema.
 
 ## Backend Requirements
 - **Framework:** Python API (FastAPI preferred for robust async/MCP integration).

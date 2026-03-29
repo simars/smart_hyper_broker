@@ -7,6 +7,10 @@ load_dotenv(override=True)
 
 app = FastAPI(title="Smart Hyper Broker API")
 
+# Mount MCP (Model Context Protocol) Server for Intelligence Layer querying
+from mcp_server import mcp
+app.mount("/mcp", mcp.sse_app())
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -22,8 +26,18 @@ def read_root():
 @app.get("/api/positions")
 def get_positions():
     import normalization
-    positions = normalization.get_normalized_positions()
-    return {"status": "success", "data": positions}
+    from questrade_service import QuastradeAuthError
+    try:
+        positions = normalization.get_normalized_positions()
+        return {"status": "success", "data": positions}
+    except QuastradeAuthError as e:
+        # Return a structured error the frontend can display as a user-facing message
+        return {
+            "status": "auth_error",
+            "broker": "questrade",
+            "message": str(e),
+            "data": [],
+        }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

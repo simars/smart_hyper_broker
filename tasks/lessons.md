@@ -20,3 +20,19 @@ When executing diagnostic probes against OAuth pipelines (specifically those req
 ### Rule 4: Brute Forcing Broker Context Parameters
 APIs like Moomoo (OpenD) rigidly enforce geographical account matrices (`TrdMarket.HK` vs `TrdMarket.US`). Removing standard filters assumes OpenD naturally returns the superset, which is false—it enforces a hidden default (`HK`) leading to instant denial.
 **Pattern Fix**: Implement a comprehensive `try/except` brute-force traversal loop encompassing all permutations of `SecurityFirm` arrays and `TrdMarket` arrays to seamlessly digest the active environment regardless of user locale.
+
+### Rule 5: Never Trust a Truthy Dict as a Valid Response
+When checking broker API responses, a non-empty dict is always truthy in Python — including error payloads like `{'code': 1017, 'message': 'Access token is invalid'}`. Code that does `if q.accounts:` will silently treat an auth error as success, producing 0 accounts with no warning.
+**Pattern Fix**: Always assert the *structure* of the response, not just its truthiness. Check `isinstance(resp, dict) and 'accounts' in resp` (or the equivalent domain key). Wrap this in an `_is_token_valid()` helper so it is reused consistently.
+
+### Rule 6: Broker Auth Failures Must Propagate as Typed Exceptions — Never Return []
+Returning an empty list on auth failure masks the real problem: the UI shows "no positions" with zero guidance, leaving the user confused. Mid-execution token expiry is a distinct, recoverable condition.
+**Pattern Fix**:
+1. Detect token-expiry signals (`code 1017`, `401`, `Unauthorized`) separately from general errors.
+2. On expiry, bust the stale cache file and attempt one re-auth from `.env` refresh token.
+3. If re-auth also fails, raise a typed `BrokerAuthError(...)` (never `return []`).
+4. Catch `BrokerAuthError` at the FastAPI endpoint and return `{"status": "auth_error", "broker": "...", "message": "..."}` — a structured payload the frontend can render as an actionable error card with step-by-step remediation instructions and a Retry button.
+
+### Rule 8: `Intl.NumberFormat` + explicit ISO badge = double currency indicator for non-USD currencies
+`Intl.NumberFormat` in `en-US` locale renders `CA$` for CAD, `HK$` for HKD, etc. — not just `$`. If you also render a separate currency badge (e.g. ` CAD`), CAD rows show `CA$18.40 CAD`, which is redundant and confusing.
+**Pattern Fix**: Use `currencyDisplay: "narrowSymbol"` in the `Intl.NumberFormat` options. This forces all currencies to render with the narrow `$` symbol, leaving the explicit ISO code badge as the sole disambiguator: `$18.40 CAD` vs `$104.00 USD`.
