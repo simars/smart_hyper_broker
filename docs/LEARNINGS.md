@@ -36,3 +36,17 @@ Silently returning `[]` on authentication failure masks the root cause. The UI r
   2. Attempt one automatic re-auth by busting the stale cache file and bootstrapping from the `.env` refresh token.
   3. If re-auth also fails, raise a typed `BrokerAuthError` (never `return []`). This exception carries a human-readable, actionable message.
   4. Catch `BrokerAuthError` at the FastAPI endpoint and return `{"status": "auth_error", "broker": "...", "message": "..."}` — a structured payload the frontend maps directly to a UI error card with step-by-step remediation instructions and a **Retry Connection** button.
+
+## Phase 7: Frontend Aggregation & Currency Display (Completed Mar 2026)
+
+### 8. Intl.NumberFormat Emits Currency-Prefixed Symbols for Non-USD Currencies
+`new Intl.NumberFormat("en-US", { style: "currency", currency: "CAD" })` renders `CA$18.40`, not `$18.40`. If you also render an explicit ISO badge (" CAD") after the value, CAD rows display as `CA$18.40 CAD` — a redundant double-indicator. USD rows are unaffected because the USD symbol is just `$`.
+- *Architectural Standard*: Always use `currencyDisplay: "narrowSymbol"` when rendering monetary values alongside a separate ISO badge. This forces all currencies to use the narrow `$` symbol, leaving the badge as the sole and unambiguous currency indicator: `$18.40 CAD` vs `$104.00 USD`.
+
+### 9. Client-Side Symbol Grouping: Qty-Weighted Average is the Correct Aggregation for Avg Entry
+When collapsing multiple positions for the same ticker into one row, a simple average of `average_buying_price` is financially incorrect because it ignores lot sizes. E.g. 13 shares @ $388 + 97 shares @ $323 → simple avg = $355.50, but the true cost-basis weighted avg = $328.48.
+- *Architectural Standard*: Carry a running `_wtotal = qty × price` accumulator alongside the grouped row. On each merge: `new_avg = (prev_wtotal + qty × price) / new_total_qty`. This is O(n) and avoids needing to re-scan all constituent rows.
+
+### 10. Grouping Logic Belongs at Module Scope, Not Inside useMemo Callbacks
+The `groupBySymbol()` function is pure (no side effects, no hooks). Defining it at module scope (outside any component) makes it tree-shakeable and avoids recreating the function reference on every render. The `useMemo` wrapper *calling* it is sufficient to memoize the output — the function itself does not need to live inside the component.
+

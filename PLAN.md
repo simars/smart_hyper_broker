@@ -36,3 +36,21 @@
 ## Phase 3: Verification [Verified & Complete]
 - [x] Setup testing harnesses securely.
 - [x] Subagent frontend UI Walkthrough verification.
+
+## Phase 6: Holdings Table UX & Currency Normalization [Complete]
+- [x] Extend normalization schema with `open_pnl_cad/usd` and `day_pnl_cad/usd` via `_to_cad_usd()` helper.
+- [x] Extend `Position` TypeScript interface with 4 new FX-converted PnL fields.
+- [x] Rewrite `MetricsHeader` with CAD/USD pill toggle; NAV, Unrealized PnL, Daily PnL aggregate in selected base currency.
+- [x] Add per-cell currency ISO badge to all monetary columns in holdings table.
+- [x] Fix `CA$` double-indicator: use `currencyDisplay: 'narrowSymbol'` in `Intl.NumberFormat`.
+- [x] Add click-to-sort on all table columns (asc → desc → none cycle) with ↑↓⇅ indicators.
+- [x] Add fuzzy-match search bar filtering by symbol, broker, account type with live result count.
+- [x] Update `docs/SPECS.md` with formal requirements for all new UX features.
+
+## Phase 7: Group by Symbol [Complete]
+- [x] Add `GroupedPosition` type with account slots, broker list, and row count.
+- [x] Implement `groupBySymbol()`: sum qty/PnL/market_val, qty-weighted avg entry, MIX currency for cross-currency edge case.
+- [x] Add grouped boolean state (default: false = ungrouped) with toggle button in toolbar.
+- [x] Grouped rows render all broker badges, ×N count chip, and per-account sub-line.
+- [x] Search and sort apply independently in both views.
+- [x] Lint: clean. Browser-verified: aggregation correct, toggle bidirectional, fuzzy search works in grouped mode.
