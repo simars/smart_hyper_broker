@@ -31,13 +31,32 @@ def get_positions():
         positions = normalization.get_normalized_positions()
         return {"status": "success", "data": positions}
     except QuastradeAuthError as e:
-        # Return a structured error the frontend can display as a user-facing message
         return {
             "status": "auth_error",
             "broker": "questrade",
             "message": str(e),
             "data": [],
         }
+
+@app.get("/api/insights/manager-thesis")
+def get_manager_thesis():
+    """Returns structured Manager Thesis Validation findings from the rule-based analysis engine."""
+    import insights
+    from questrade_service import QuastradeAuthError
+    try:
+        return insights.generate_manager_thesis()
+    except QuastradeAuthError as e:
+        return {"title": "Manager Thesis Validation", "generated_at": "", "error": str(e), "findings": []}
+
+@app.get("/api/insights/behavioral-bias")
+def get_behavioral_bias():
+    """Returns structured Behavioral Bias Report findings from the rule-based analysis engine."""
+    import insights
+    from questrade_service import QuastradeAuthError
+    try:
+        return insights.generate_behavioral_bias()
+    except QuastradeAuthError as e:
+        return {"title": "Behavioral Bias Report", "generated_at": "", "error": str(e), "findings": []}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
