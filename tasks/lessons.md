@@ -47,3 +47,19 @@ When aggregating data from multiple services (like `normalization.py`), don't as
 ### Rule 11: Fail-Safe Middleware on UI-Critical Endpoints
 FastAPI 500 errors can bypass standard CORS headers if not caught, leading to misleading "CORS error" reports in the browser when the real issue is a backend crash. 
 **Pattern Fix**: Wrap high-level analysis endpoints in a generic `try/except` that returns a structured JSON error object. This ensures the frontend receives a valid response (200 status with an `error` field) that it can render gracefully on the dashboard.
+
+### Rule 12: Concurrency Locking for Single-Use Tokens
+When multiple concurrent requests (e.g., Positions and Insights fetchers) hit a 401 Unauthorized, they may all attempt to `refresh_token` simultaneously. Since Questrade tokens are **single-use**, this creates a race condition where the first success consumes the token and the second attempt invalidates it.
+**Pattern Fix**: Wrap the `refresh_token` logic in a `threading.Lock` and re-check the token's validity *after* acquiring the lock to skip redundant refreshes if another thread already finished.
+
+### Rule 13: Dynamic API Server Re-Derivation in Retries
+Questrade often assigns a different API server host (e.g., `api02` to `api06`) during a token refresh. If a retry attempt uses the old `base_url` with the new token, it will fail with `1017 Access token is invalid`.
+**Pattern Fix**: Always re-derive the full `base_url` from the fresh credentials object *after* a refresh but *before* the retry attempt.
+
+### Rule 14: Questrade REST WAF Bypass (Header Enforcement)
+Direct REST calls to `login.questrade.com` and Questrade API servers require a `Mozilla/5.0` User-Agent. This is mandatory even when moving away from a library to direct `requests` or `urllib` calls.
+**Pattern Fix**: Centralize a `QUEST_HEADERS` dictionary with a desktop User-Agent and apply it to every outgoing request in the manager.
+
+### Rule 15: Instant Cache Invalidation on Manual Auth
+Updating a token via the UI should provide immediate feedback. If the backend uses a cache (like `TTLCache` in `normalization.py`), it must be explicitly cleared during the token update endpoint processing.
+**Pattern Fix**: Call `.clear()` on all relevant data caches in the response handler for manual credential updates.

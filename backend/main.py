@@ -40,8 +40,15 @@ def update_questrade_token(payload: dict):
     
     try:
         refresh_token(token)
+        # Clear the normalization positions cache so the user sees the new data immediately
+        import normalization
+        if hasattr(normalization, 'positions_cache'):
+            normalization.positions_cache.clear()
+            print("Normalization: Positions cache cleared after manual token update.")
+        
         return {"status": "success", "message": "Questrade token updated successfully."}
     except Exception as e:
+        print(f"Questrade: Manual token update failed: {e}")
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/insights/manager-thesis")

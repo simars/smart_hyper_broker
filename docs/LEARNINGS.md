@@ -62,3 +62,17 @@ Backend crashes (500 errors) can bypass CORS middleware, causing the browser to 
 ### 13. Strict Schema Extraction between Internal Modules
 When a data-aggregator (like `normalization.py`) evolves to return metadata or error arrays alongside data, consumers (like `insights.py`) must be updated to explicitly extract the relevant data key (e.g., `res.get("positions", [])`). 
 - *Architectural Standard*: Never assume an internal function returns a bare list if it involves multi-service aggregation. Always code defensively by extracting keys and verifying the return type to prevent `TypeError` crashes.
+
+## Phase 15: Questrade REST API & Concurrency Control (Completed Mar 2026)
+
+### 14. Single-Use Token Concurrency Management
+Questrade refresh tokens are **single-use**. If multiple requests (e.g., Positions, Insights, WebSocket) fail with a 401 Unauthorized at the same time, they all attempt to `refresh_token()`. This creates a race condition where one thread consumes the token and the others invalidate the new credentials.
+- *Architectural Standard*: Implement a thread-safe `Lock` in the Token Manager. All `refresh_token` calls must acquire this lock, and then re-check if the token was already refreshed while waiting for the lock before proceeding.
+
+### 15. Dynamic API Server Routing
+Questrade often migrates accounts between API servers (e.g., `api02.iq` to `api06.iq`) during a token refresh. Retrying an API call on the old server instance results in a `1017` error.
+- *Architectural Standard*: Always re-derive the absolute API base URL from the latest credentials metadata *after* a refresh happens inside a retry loop.
+
+### 16. Permanent WAF Bypass Headers
+Direct REST calls to Questrade endpoints (`login.questrade.com`) are strictly monitored by a WAF. Requests without a `Mozilla/5.0` User-Agent are rejected with `400 Bad Request` or a JavaScript challenge.
+- *Architectural Standard*: Maintain a centralized desktop `User-Agent` and apply it to **every** Questrade-related outgoing HTTP request to ensure consistent authentication success.
