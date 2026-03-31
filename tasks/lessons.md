@@ -36,3 +36,14 @@ Returning an empty list on auth failure masks the real problem: the UI shows "no
 ### Rule 8: `Intl.NumberFormat` + explicit ISO badge = double currency indicator for non-USD currencies
 `Intl.NumberFormat` in `en-US` locale renders `CA$` for CAD, `HK$` for HKD, etc. — not just `$`. If you also render a separate currency badge (e.g. ` CAD`), CAD rows show `CA$18.40 CAD`, which is redundant and confusing.
 **Pattern Fix**: Use `currencyDisplay: "narrowSymbol"` in the `Intl.NumberFormat` options. This forces all currencies to render with the narrow `$` symbol, leaving the explicit ISO code badge as the sole disambiguator: `$18.40 CAD` vs `$104.00 USD`.
+
+### Rule 9: CORS Origin Port Drifting
+Next.js/Vite dev servers automatically increment ports if the default (3000) is occupied. Hardcoding `allow_origins=["http://localhost:3000"]` causes silent UI breakage ("Failed to fetch") when the frontend shifts to 3001.
+**Pattern Fix**: Use a more permissive regex or an environment-driven array for `allow_origins` that includes fallback ports (3000-3005) in development mode.
+
+### Rule 10: Component Boundary Schema Extraction
+When aggregating data from multiple services (like `normalization.py`), don't assume the output is a bare list. High-level analysis engines (like `insights.py`) must explicitly extract the data key (e.g., `positions = res.get("positions", [])`) and verify the content structure before processing. This prevents `TypeError` crashes when the data source adds metadata or error arrays to its return type.
+
+### Rule 11: Fail-Safe Middleware on UI-Critical Endpoints
+FastAPI 500 errors can bypass standard CORS headers if not caught, leading to misleading "CORS error" reports in the browser when the real issue is a backend crash. 
+**Pattern Fix**: Wrap high-level analysis endpoints in a generic `try/except` that returns a structured JSON error object. This ensures the frontend receives a valid response (200 status with an `error` field) that it can render gracefully on the dashboard.

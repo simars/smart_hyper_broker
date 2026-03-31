@@ -30,7 +30,7 @@ def generate_manager_thesis() -> dict:
     Validate whether the current allocations match a defensible macro thesis.
     Returns structured findings: concentration, currency split, PnL health, thesis label.
     """
-    positions = normalization.get_normalized_positions()
+    positions = normalization.get_normalized_positions().get("positions", [])
     findings = []
 
     if not positions:
@@ -123,7 +123,7 @@ def generate_behavioral_bias() -> dict:
     Identify psychological biases anchoring the portfolio:
     sunk-cost fallacy, home-country bias, concentration risk, recency / momentum chasing.
     """
-    positions = normalization.get_normalized_positions()
+    positions = normalization.get_normalized_positions().get("positions", [])
     findings = []
 
     if not positions:

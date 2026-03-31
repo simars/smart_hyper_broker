@@ -33,20 +33,32 @@ In Python, any non-empty dict is truthy — including error payloads like `{'cod
 Silently returning `[]` on authentication failure masks the root cause. The UI renders "no positions" with no guidance, making the problem appear to be a data issue rather than an auth issue.
 - *Architectural Standard*:
   1. On first auth failure, detect token-expiry signals (`code 1017`, HTTP `401`, string `'Unauthorized'`) and distinguish them from general errors.
-  2. Attempt one automatic re-auth by busting the stale cache file and bootstrapping from the `.env` refresh token.
-  3. If re-auth also fails, raise a typed `BrokerAuthError` (never `return []`). This exception carries a human-readable, actionable message.
-  4. Catch `BrokerAuthError` at the FastAPI endpoint and return `{"status": "auth_error", "broker": "...", "message": "..."}` — a structured payload the frontend maps directly to a UI error card with step-by-step remediation instructions and a **Retry Connection** button.
+  2. Attempt one automatic re-auth by bootstrapping from the `.env` refresh token.
+  3. If re-auth also fails, raise a typed `BrokerAuthError` (never `return []`).
+  4. Catch `BrokerAuthError` at the FastAPI endpoint and return `{"status": "auth_error", "broker": "...", "message": "..."}`.
 
 ## Phase 7: Frontend Aggregation & Currency Display (Completed Mar 2026)
 
 ### 8. Intl.NumberFormat Emits Currency-Prefixed Symbols for Non-USD Currencies
-`new Intl.NumberFormat("en-US", { style: "currency", currency: "CAD" })` renders `CA$18.40`, not `$18.40`. If you also render an explicit ISO badge (" CAD") after the value, CAD rows display as `CA$18.40 CAD` — a redundant double-indicator. USD rows are unaffected because the USD symbol is just `$`.
-- *Architectural Standard*: Always use `currencyDisplay: "narrowSymbol"` when rendering monetary values alongside a separate ISO badge. This forces all currencies to use the narrow `$` symbol, leaving the badge as the sole and unambiguous currency indicator: `$18.40 CAD` vs `$104.00 USD`.
+`new Intl.NumberFormat("en-US", { style: "currency", currency: "CAD" })` renders `CA$18.40`, not `$18.40`. If you also render an explicit ISO badge (" CAD") after the value, CAD rows display as `CA$18.40 CAD`.
+- *Architectural Standard*: Always use `currencyDisplay: "narrowSymbol"` when rendering monetary values alongside a separate ISO badge.
 
-### 9. Client-Side Symbol Grouping: Qty-Weighted Average is the Correct Aggregation for Avg Entry
-When collapsing multiple positions for the same ticker into one row, a simple average of `average_buying_price` is financially incorrect because it ignores lot sizes. E.g. 13 shares @ $388 + 97 shares @ $323 → simple avg = $355.50, but the true cost-basis weighted avg = $328.48.
-- *Architectural Standard*: Carry a running `_wtotal = qty × price` accumulator alongside the grouped row. On each merge: `new_avg = (prev_wtotal + qty × price) / new_total_qty`. This is O(n) and avoids needing to re-scan all constituent rows.
+### 9. Client-Side Symbol Grouping: Qty-Weighted Average
+When collapsing multiple positions for the same ticker into one row, use a cost-basis weighted average: `new_avg = (prev_wtotal + qty × price) / new_total_qty`.
 
-### 10. Grouping Logic Belongs at Module Scope, Not Inside useMemo Callbacks
-The `groupBySymbol()` function is pure (no side effects, no hooks). Defining it at module scope (outside any component) makes it tree-shakeable and avoids recreating the function reference on every render. The `useMemo` wrapper *calling* it is sufficient to memoize the output — the function itself does not need to live inside the component.
+### 10. Grouping Logic Belongs at Module Scope
+Define pure utility functions (like `groupBySymbol`) outside React components to improve tree-shaking and prevent unnecessary function reference recreations.
 
+## Phase 11: Production Resilience & Analysis Engines (Completed Mar 2026)
+
+### 11. CORS Origin Reliability in Development (Port Drifting)
+Local development servers like Next.js shift ports (3000 to 3001) if the default is occupied. Hardcoding a single origin in the backend leads to silent fetch failures in the browser.
+- *Architectural Standard*: Maintain an `allow_origins` array in the backend that covers common development port ranges (`3000-3005`) or use environment-specific origin detection.
+
+### 12. Fail-Safe Middleware on Analysis Endpoints
+Backend crashes (500 errors) can bypass CORS middleware, causing the browser to report a "CORS error" when the actual issue is a code exception.
+- *Architectural Standard*: Wrap complex analysis endpoints in a generic `try/except` that returns a structured JSON error object (200 status with an `error` key). This ensures the dashboard can render a meaningful error message instead of failing the network request entirely.
+
+### 13. Strict Schema Extraction between Internal Modules
+When a data-aggregator (like `normalization.py`) evolves to return metadata or error arrays alongside data, consumers (like `insights.py`) must be updated to explicitly extract the relevant data key (e.g., `res.get("positions", [])`). 
+- *Architectural Standard*: Never assume an internal function returns a bare list if it involves multi-service aggregation. Always code defensively by extracting keys and verifying the return type to prevent `TypeError` crashes.

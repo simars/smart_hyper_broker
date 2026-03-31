@@ -26,36 +26,46 @@ def read_root():
 @app.get("/api/positions")
 def get_positions():
     import normalization
-    from questrade_service import QuastradeAuthError
+    # Normalization now catches its own errors and returns a structured dict
+    res = normalization.get_normalized_positions()
+    return {"status": "success", "data": res["positions"], "errors": res["errors"]}
+
+@app.post("/api/questrade/token")
+def update_questrade_token(payload: dict):
+    """Manually trigger a token refresh using a provided bootstrap refresh token."""
+    from questrade_token_manager import refresh_token
+    token = payload.get("refresh_token")
+    if not token:
+        return {"status": "error", "message": "No refresh token provided."}
+    
     try:
-        positions = normalization.get_normalized_positions()
-        return {"status": "success", "data": positions}
-    except QuastradeAuthError as e:
-        return {
-            "status": "auth_error",
-            "broker": "questrade",
-            "message": str(e),
-            "data": [],
-        }
+        refresh_token(token)
+        return {"status": "success", "message": "Questrade token updated successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/insights/manager-thesis")
 def get_manager_thesis():
     """Returns structured Manager Thesis Validation findings from the rule-based analysis engine."""
     import insights
-    from questrade_service import QuastradeAuthError
+    import traceback
     try:
         return insights.generate_manager_thesis()
-    except QuastradeAuthError as e:
+    except Exception as e:
+        print(f"Error in manager-thesis: {e}")
+        traceback.print_exc()
         return {"title": "Manager Thesis Validation", "generated_at": "", "error": str(e), "findings": []}
 
 @app.get("/api/insights/behavioral-bias")
 def get_behavioral_bias():
     """Returns structured Behavioral Bias Report findings from the rule-based analysis engine."""
     import insights
-    from questrade_service import QuastradeAuthError
+    import traceback
     try:
         return insights.generate_behavioral_bias()
-    except QuastradeAuthError as e:
+    except Exception as e:
+        print(f"Error in behavioral-bias: {e}")
+        traceback.print_exc()
         return {"title": "Behavioral Bias Report", "generated_at": "", "error": str(e), "findings": []}
 
 @app.websocket("/ws")
@@ -65,8 +75,12 @@ async def websocket_endpoint(websocket: WebSocket):
     import asyncio
     try:
         while True:
-            positions = normalization.get_normalized_positions()
-            await websocket.send_json({"type": "positions_update", "data": positions})
-            await asyncio.sleep(5)  # Steam updates every 5 seconds (cache protects APIs)
+            res = normalization.get_normalized_positions()
+            await websocket.send_json({
+                "type": "positions_update", 
+                "data": res["positions"],
+                "errors": res["errors"]
+            })
+            await asyncio.sleep(5)
     except Exception as e:
         print(f"WebSocket connection closed: {e}")
