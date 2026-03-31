@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { usePositions } from "@/hooks/use-positions";
-import { BrokerAuthError, Position } from "@/lib/api";
+import { Position, BrokerError } from "@/lib/api";
 import {
   ArrowUpRight, ArrowDownRight, Globe,
   TriangleAlert, RefreshCw,
@@ -32,6 +32,7 @@ interface GroupedPosition {
   brokers: string[]; // unique, ordered
   accounts: AccountSlot[];
   rowCount: number;
+  _wtotal?: number; // Internal usage for weighted average
 }
 
 // ─── Grouping logic ───────────────────────────────────────────────────────────
@@ -103,13 +104,13 @@ function nextDir(current: SortDir): SortDir {
   return "none";
 }
 
-function sortRows<T extends { [k: string]: unknown }>(
+function sortRows<T>(
   rows: T[], key: SortKey, dir: SortDir
 ): T[] {
   if (dir === "none") return rows;
   return [...rows].sort((a, b) => {
-    const av = a[key];
-    const bv = b[key];
+    const av = (a as any)[key];
+    const bv = (b as any)[key];
     if (typeof av === "string" && typeof bv === "string")
       return dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
     return dir === "asc"
@@ -206,13 +207,85 @@ function TableHeader({ sortKey, sortDir, onSort }: {
   );
 }
 
+// ─── UI Helper Components ───────────────────────────────────────────────────
+function QuestradeConnectCard({ onRefetch }: { onRefetch: () => void }) {
+  const [token, setToken] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleSubmit = async () => {
+    if (!token) return;
+    setIsSubmitting(true);
+    setMsg(null);
+    try {
+      const { updateQuestradeToken } = await import("@/lib/api");
+      const res = await updateQuestradeToken(token);
+      if (res.status === "success") {
+        setMsg({ type: "success", text: "Connected! Refreshing portfolio..." });
+        setToken("");
+        setTimeout(() => {
+          onRefetch();
+          setMsg(null);
+        }, 1500);
+      } else {
+        setMsg({ type: "error", text: res.message || "Failed to connect." });
+      }
+    } catch (e) {
+      setMsg({ type: "error", text: "Network error. Is the backend running?" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mb-8 w-full rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 backdrop-blur-xl p-6 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+      <div className="flex flex-col lg:flex-row items-center gap-6">
+        <div className="p-3 rounded-2xl bg-amber-100 dark:bg-amber-900/50 shrink-0">
+          <TriangleAlert className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div className="flex flex-col gap-1 flex-1">
+          <h3 className="font-bold text-lg text-amber-900 dark:text-amber-100">
+            Questrade Connection Required
+          </h3>
+          <p className="text-sm text-amber-800/70 dark:text-amber-200/60 leading-relaxed">
+            Automatic token rotation failed or was never initiated. Please provide a new Refresh Token from your Questrade App Hub to restore sync.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 w-full lg:w-96">
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Enter Refresh Token..."
+              className="flex-1 px-4 py-2 rounded-xl bg-white/70 dark:bg-zinc-900/50 border border-amber-200 dark:border-amber-800/50 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting || !token}
+              className="px-6 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-sm shadow-amber-600/20"
+            >
+              {isSubmitting ? "Syncing..." : "Connect"}
+            </button>
+          </div>
+          {msg && (
+            <p className={`text-[11px] font-semibold px-1 ${msg.type === "success" ? "text-emerald-600" : "text-rose-600"}`}>
+              {msg.text}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root component ───────────────────────────────────────────────────────────
 export default function HoldingsTable() {
-  const { data: positions, isLoading, error, refetch, isFetching } = usePositions();
+  const { data: res, isLoading, error, refetch } = usePositions();
   const [sortKey,  setSortKey]  = useState<SortKey>("symbol");
   const [sortDir,  setSortDir]  = useState<SortDir>("none");
   const [search,   setSearch]   = useState("");
-  const [grouped,  setGrouped]  = useState(false); // default: ungrouped
+  const [grouped,  setGrouped]  = useState(false);
 
   if (isLoading) {
     return (
@@ -222,9 +295,7 @@ export default function HoldingsTable() {
     );
   }
 
-  if (error) {
-    const isAuthError = error instanceof BrokerAuthError;
-    const brokerName  = isAuthError ? (error as BrokerAuthError).broker : "broker";
+  if (error || !res) {
     return (
       <div className="w-full rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 backdrop-blur-xl p-8">
         <div className="flex items-start gap-4">
@@ -232,25 +303,17 @@ export default function HoldingsTable() {
             <TriangleAlert className="w-6 h-6 text-amber-600 dark:text-amber-400" />
           </div>
           <div className="flex flex-col gap-2 flex-1">
-            <h3 className="font-bold text-lg text-amber-900 dark:text-amber-100 capitalize">
-              {brokerName} Authentication Required
+            <h3 className="font-bold text-lg text-amber-900 dark:text-amber-100">
+              API Connection Failure
             </h3>
-            <p className="text-sm text-amber-800/80 dark:text-amber-200/70 leading-relaxed">{error.message}</p>
-            {isAuthError && (
-              <ol className="mt-3 text-sm text-amber-800/70 dark:text-amber-200/60 space-y-1 list-decimal list-inside">
-                <li>Open <strong>Questrade App Hub</strong> and log in.</li>
-                <li>Navigate to <strong>API Access</strong> → generate a new <strong>Personal API Token</strong>.</li>
-                <li>Paste the refresh token into <code className="text-xs bg-amber-200/50 dark:bg-amber-800/50 px-1 py-0.5 rounded">.env</code> as <code className="text-xs bg-amber-200/50 dark:bg-amber-800/50 px-1 py-0.5 rounded">QUESTRADE_REFRESH_TOKEN</code>.</li>
-                <li>The backend picks it up automatically on the next request.</li>
-              </ol>
-            )}
+            <p className="text-sm text-amber-800/80 dark:text-amber-200/70">
+              Unable to reach the backend intelligence layer. Please ensure the Python API is running.
+            </p>
             <button
               onClick={() => refetch()}
-              disabled={isFetching}
-              className="mt-4 self-start flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+              className="mt-4 self-start px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors"
             >
-              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
-              {isFetching ? "Retrying…" : "Retry Connection"}
+              Retry Connection
             </button>
           </div>
         </div>
@@ -258,22 +321,27 @@ export default function HoldingsTable() {
     );
   }
 
-  if (!positions || positions.length === 0) {
-    return (
-      <div className="w-full rounded-3xl bg-white/60 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/50 backdrop-blur-xl p-8 text-center text-zinc-500">
-        <p>No active positions currently detected.</p>
-      </div>
-    );
-  }
+  const positions = res.data;
+  const questradeError = res.errors.find(e => e.broker === "questrade" && e.type === "auth_error");
 
   return (
-    <TableContent
-      positions={positions}
-      sortKey={sortKey}   setSortKey={setSortKey}
-      sortDir={sortDir}   setSortDir={setSortDir}
-      search={search}     setSearch={setSearch}
-      grouped={grouped}   setGrouped={setGrouped}
-    />
+    <div className="flex flex-col">
+      {questradeError && <QuestradeConnectCard onRefetch={refetch} />}
+      
+      {positions.length === 0 ? (
+        <div className="w-full rounded-3xl bg-white/60 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/50 backdrop-blur-xl p-8 text-center text-zinc-500">
+           <p>No active positions currently detected.</p>
+        </div>
+      ) : (
+        <TableContent
+          positions={positions}
+          sortKey={sortKey}   setSortKey={setSortKey}
+          sortDir={sortDir}   setSortDir={setSortDir}
+          search={search}     setSearch={setSearch}
+          grouped={grouped}   setGrouped={setGrouped}
+        />
+      )}
+    </div>
   );
 }
 

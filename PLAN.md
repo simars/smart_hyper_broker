@@ -54,3 +54,12 @@
 - [x] Grouped rows render all broker badges, ×N count chip, and per-account sub-line.
 - [x] Search and sort apply independently in both views.
 - [x] Lint: clean. Browser-verified: aggregation correct, toggle bidirectional, fuzzy search works in grouped mode.
+
+## Phase 8: Questrade Auth Resilience & UI Re-auth [Complete]
+- [x] Implement `QuestradeTokenManager` for manual refresh and JSON-based storage.
+- [x] Update `questrade_service.py` to use `QuestradeTokenManager` with automatic rotation.
+- [x] Refactor `normalization.py` to support partial success (Moomoo data + Questrade error).
+- [x] Add `POST /api/questrade/token` to allow manual bootstrap/re-auth.
+- [x] Implement `QuestradeConnectCard` in frontend to prompt for token only on failure.
+- [x] Verify Moomoo data renders independently of Questrade auth state.
+- [x] Verify that UI token submission restores Questrade connectivity and persists to `questrade_tokens.json`.

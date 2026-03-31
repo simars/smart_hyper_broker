@@ -35,7 +35,7 @@ function CurrencyToggle({
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function MetricsHeader() {
-  const { data: positions, isLoading, isError } = usePositions();
+  const { data: res, isLoading, isError } = usePositions();
   const [baseCurrency, setBaseCurrency] = useState<BaseCurrency>("CAD");
 
   if (isLoading) {
@@ -48,7 +48,9 @@ export default function MetricsHeader() {
     );
   }
 
-  if (isError || !positions) {
+  const positions = res?.data || [];
+
+  if (isError || !res) {
     return (
       <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400">
         <p className="font-medium">Error loading portfolio metrics. Is the API running?</p>

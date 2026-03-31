@@ -46,10 +46,32 @@ def get_cad_usd_rate() -> float:
     return 1.35  # Fallback estimate
 
 @cached(cache=positions_cache)
-def get_normalized_positions() -> List[Dict[str, Any]]:
+def get_normalized_positions() -> Dict[str, Any]:
     """Aggregate positions from multiple brokers into a single normalized schema."""
-    moomoo_raw = moomoo_service.fetch_positions()
-    questrade_raw = questrade_service.fetch_positions()
+    moomoo_raw = []
+    try:
+        moomoo_raw = moomoo_service.fetch_positions()
+    except Exception as e:
+        print(f"Normalization: Moomoo fetch failed: {e}")
+
+    questrade_raw = []
+    errors = []
+    try:
+        questrade_raw = questrade_service.fetch_positions()
+    except questrade_service.QuestradeAuthError as e:
+        print(f"Normalization: Questrade auth failure: {e}")
+        errors.append({
+            "broker": "questrade",
+            "type": "auth_error",
+            "message": str(e)
+        })
+    except Exception as e:
+        print(f"Normalization: Questrade general failure: {e}")
+        errors.append({
+            "broker": "questrade",
+            "type": "general_error",
+            "message": str(e)
+        })
     
     cad_usd_rate = get_cad_usd_rate()
     unified_positions = []
@@ -57,6 +79,7 @@ def get_normalized_positions() -> List[Dict[str, Any]]:
     # Process Moomoo positions
     if moomoo_raw:
         for pos in moomoo_raw:
+            # ... (existing loop content)
             raw_symbol = pos.get("code", "")
             if not raw_symbol:
                 continue
@@ -96,6 +119,7 @@ def get_normalized_positions() -> List[Dict[str, Any]]:
     # Process Questrade positions
     if questrade_raw:
         for pos in questrade_raw:
+            # ... (existing loop content)
             raw_symbol = pos.get("symbol", "")
             if not raw_symbol:
                 continue
@@ -133,4 +157,7 @@ def get_normalized_positions() -> List[Dict[str, Any]]:
                 "currency": asset_currency,
             })
             
-    return unified_positions
+    return {
+        "positions": unified_positions,
+        "errors": errors
+    }
