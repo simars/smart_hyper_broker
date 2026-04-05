@@ -11,21 +11,16 @@ help:
 	@echo "  make clean      - Removes .venv and cache files"
 
 init:
-	python3 -m venv .venv
-	.venv/bin/pip install -r requirements.txt
-	.venv/bin/pip install debugpy
+	./scripts/init.sh
 
 dev:
-	.venv/bin/uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+	./scripts/dev.sh
 
 dev-debug:
-	.venv/bin/python -m debugpy --listen 0.0.0.0:5678 -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+	./scripts/dev-debug.sh
 
 test:
-	PYTHONPATH=. .venv/bin/pytest tests/
+	./scripts/test.sh
 
 clean:
-	rm -rf .venv
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type d -name ".pytest_cache" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
+	./scripts/clean.sh

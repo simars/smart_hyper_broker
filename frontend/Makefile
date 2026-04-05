@@ -11,17 +11,16 @@ help:
 	@echo "  make clean      - Removes node modules and .next build"
 
 init:
-	npm install
+	./scripts/init.sh
 
 dev:
-	npm run dev
+	./scripts/dev.sh
 
 dev-debug:
-	NODE_OPTIONS='--inspect' npm run dev
+	./scripts/dev-debug.sh
 
 test:
-	npm run test --if-present
+	./scripts/test.sh
 
 clean:
-	rm -rf node_modules
-	rm -rf .next
+	./scripts/clean.sh
