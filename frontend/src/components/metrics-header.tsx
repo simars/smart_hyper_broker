@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePositions } from "@/hooks/use-positions";
 import { ArrowUpRight, ArrowDownRight, Wallet, Activity } from "lucide-react";
+import { UploadRbcCsv } from "./upload-rbc-csv";
 
 type BaseCurrency = "CAD" | "USD";
 
@@ -84,10 +85,13 @@ export default function MetricsHeader() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Base currency toggle */}
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Base currency</span>
-        <CurrencyToggle baseCurrency={baseCurrency} setBaseCurrency={setBaseCurrency} />
+      {/* Top Controls: Upload RBC CSV and Currency Toggle */}
+      <div className="flex items-center justify-between">
+        <UploadRbcCsv />
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Base currency</span>
+          <CurrencyToggle baseCurrency={baseCurrency} setBaseCurrency={setBaseCurrency} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -71,3 +71,60 @@ def fetch_positions() -> list:
             
         print(f"Questrade: non-auth error during fetch: {e}")
         return []
+
+def get_quotes(symbols_with_currency: list) -> dict:
+    """
+    Fetch real-time quotes for a list of tuples: (symbol, currency).
+    Example: [('SHOP', 'CAD'), ('AAPL', 'USD')]
+    Returns: {'SHOP': {'price': 164.58, 'day_change': 4.60}, ...}
+    """
+    if not symbols_with_currency:
+        return {}
+        
+    # Apply heuristic: Add .TO to CAD symbols
+    query_names = []
+    symbol_map = {} # mapped_name -> original_name
+    for sym, cur in symbols_with_currency:
+        mapped = f"{sym}.TO" if cur == 'CAD' and not sym.endswith('.TO') else sym
+        query_names.append(mapped)
+        symbol_map[mapped] = sym
+
+    try:
+        # Fetch symbol IDs first
+        res = make_api_request('v1/symbols', params={'names': ','.join(query_names)})
+        if not res or 'symbols' not in res:
+            return {}
+            
+        id_to_mapped = {str(x['symbolId']): x['symbol'] for x in res['symbols']}
+        ids = list(id_to_mapped.keys())
+        
+        if not ids:
+            return {}
+            
+        # Fetch quotes
+        quotes_res = make_api_request('v1/markets/quotes', params={'ids': ','.join(ids)})
+        if not quotes_res or 'quotes' not in quotes_res:
+            return {}
+            
+        result = {}
+        for q in quotes_res['quotes']:
+            mapped_name = q.get('symbol')
+            # Fallback to id mapping if symbol string differs
+            if not mapped_name or mapped_name not in symbol_map:
+                mapped_name = id_to_mapped.get(str(q.get('symbolId')))
+                
+            if mapped_name and mapped_name in symbol_map:
+                orig_sym = symbol_map[mapped_name]
+                last_price = q.get('lastTradePrice', 0)
+                open_price = q.get('openPrice', 0)
+                # Compute daily change per share
+                day_change = last_price - open_price if open_price else 0
+                result[orig_sym] = {
+                    'price': last_price,
+                    'day_change': day_change
+                }
+        return result
+    except Exception as e:
+        print(f"Questrade get_quotes error: {e}")
+        return {}
+

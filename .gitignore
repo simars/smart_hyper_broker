@@ -58,3 +58,4 @@ yarn-error.log
 # Project specific caches
 .questrade.json
 questrade_tokens.json
+backend/data/

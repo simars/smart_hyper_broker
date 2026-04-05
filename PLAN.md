@@ -63,3 +63,11 @@
 - [x] Implement `QuestradeConnectCard` in frontend to prompt for token only on failure.
 - [x] Verify Moomoo data renders independently of Questrade auth state.
 - [x] Verify that UI token submission restores Questrade connectivity and persists to `questrade_tokens.json`.
+
+## Phase 9: RBC Direct Investing CSV Ingestion
+- [ ] Backend: Create `data/rbc/` directory to store CSV uploads.
+- [ ] Backend: Add a new `rbc_parser.py` to parse RBC CSVs, grouping by account and extracting latest holdings.
+- [ ] Backend: Add quote fetching capability in `questrade_service.py` (`get_quotes()`) to enrich parsed RBC symbols with live real-time prices.
+- [ ] Backend: Add `POST /api/upload/rbc` endpoint to allow users to upload multiple CSVs belonging to multiple accounts.
+- [ ] Backend: Integrate `rbc_parser.py` into `normalization.py` to include RBC holdings in the global position map.
+- [ ] Frontend: Add a CSV Uploader component (`components/UploadRbcCsv.tsx`) in the dashboard.

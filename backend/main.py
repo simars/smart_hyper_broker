@@ -71,9 +71,40 @@ def get_behavioral_bias():
     try:
         return insights.generate_behavioral_bias()
     except Exception as e:
-        print(f"Error in behavioral-bias: {e}")
-        traceback.print_exc()
         return {"title": "Behavioral Bias Report", "generated_at": "", "error": str(e), "findings": []}
+
+from fastapi import UploadFile, File
+import shutil
+import uuid
+
+@app.post("/api/upload/rbc")
+async def upload_rbc_csv(file: UploadFile = File(...)):
+    """Uploads an RBC CSV file, saves it, and triggers a cache refresh."""
+    import normalization
+    import os
+    
+    # Ensure directory exists
+    target_dir = "data/rbc"
+    os.makedirs(target_dir, exist_ok=True)
+    
+    # Generate unique filename to avoid collisions but keep original name hints
+    safe_filename = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+    file_path = os.path.join(target_dir, safe_filename)
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        print(f"RBC Upload: Saved file {file.filename} to {file_path}")
+        
+        # Clear cache so next request sees it
+        if hasattr(normalization, 'positions_cache'):
+            normalization.positions_cache.clear()
+            
+        return {"status": "success", "message": f"Successfully processed {file.filename}"}
+    except Exception as e:
+        print(f"RBC Upload Error: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

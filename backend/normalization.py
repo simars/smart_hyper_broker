@@ -157,6 +157,52 @@ def get_normalized_positions() -> Dict[str, Any]:
                 "currency": asset_currency,
             })
             
+    # Process RBC positions
+    import rbc_service
+    rbc_raw = []
+    try:
+        rbc_raw = rbc_service.get_latest_holdings()
+    except Exception as e:
+        print(f"Normalization: RBC fetch failed: {e}")
+        errors.append({
+            "broker": "rbc",
+            "type": "general_error",
+            "message": str(e)
+        })
+
+    if rbc_raw:
+        for pos in rbc_raw:
+            asset_currency = pos.get("currency", "CAD")
+            is_cad = (asset_currency == "CAD")
+            
+            market_val = float(pos.get("market_val", 0))
+            open_pnl = float(pos.get("open_pnl", 0))
+            day_pnl = float(pos.get("day_pnl", 0))
+            
+            open_pnl_cad, open_pnl_usd = _to_cad_usd(open_pnl, is_cad, cad_usd_rate)
+            day_pnl_cad, day_pnl_usd = _to_cad_usd(day_pnl, is_cad, cad_usd_rate)
+            
+            unified_positions.append({
+                "broker": "rbc",
+                "account_id": pos.get("account_id", "Unknown"),
+                "account_type": pos.get("account_type", "Unknown"),
+                "symbol": pos.get("symbol", ""),
+                "qty": float(pos.get("qty", 0)),
+                "closed_qty": 0.0,
+                "average_buying_price": float(pos.get("average_buying_price", 0)),
+                "day_pnl": day_pnl,
+                "day_pnl_cad": day_pnl_cad,
+                "day_pnl_usd": day_pnl_usd,
+                "open_pnl": open_pnl,
+                "open_pnl_cad": open_pnl_cad,
+                "open_pnl_usd": open_pnl_usd,
+                "closed_pnl": 0.0,
+                "market_val": market_val,
+                "market_val_usd": market_val if not is_cad else market_val / cad_usd_rate,
+                "market_val_cad": market_val if is_cad else market_val * cad_usd_rate,
+                "currency": asset_currency,
+            })
+
     return {
         "positions": unified_positions,
         "errors": errors
