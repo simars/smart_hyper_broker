@@ -61,7 +61,7 @@ async def upload_rbc_csv(file: UploadFile = File(...)):
 
 @router.post("/questrade/token")
 def update_questrade_token(payload: dict):
-    from questrade_token_manager import refresh_token
+    from src.infrastructure.brokers.questrade_token_manager import refresh_token
     token = payload.get("refresh_token")
     if not token:
         return {"status": "error", "message": "No refresh token provided."}

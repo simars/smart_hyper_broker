@@ -1,6 +1,5 @@
 from typing import List
-# Assuming questrade_token_manager will be moved to the same directory or infra layer
-from questrade_token_manager import make_api_request, QuestradeAuthError
+from .questrade_token_manager import make_api_request, QuestradeAuthError
 
 from src.application.interfaces import BrokerGateway
 from src.domain.models import Position
