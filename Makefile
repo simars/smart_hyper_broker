@@ -1,4 +1,16 @@
-.PHONY: init build dev dev-debug test up clean
+.PHONY: help init build dev dev-debug test up clean
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo "Available commands:"
+	@echo "  make init       - Sets up local environment and installs dependencies"
+	@echo "  make build      - Builds docker setup"
+	@echo "  make up         - Runs application with docker-compose"
+	@echo "  make dev        - Runs application locally without docker"
+	@echo "  make dev-debug  - Runs application in debug mode"
+	@echo "  make test       - Runs all tests"
+	@echo "  make clean      - Cleans up local environments"
 
 # Delegates to nested makefiles
 init:
