@@ -71,18 +71,12 @@ class RbcGateway(BrokerGateway):
                         avg_cost_str = row[header.index("Average Cost")].replace(',', '')
                         avg_cost = float(avg_cost_str) if avg_cost_str else 0.0
                         currency = row[header.index("Currency")]
-                        last_price_str = row[header.index("Last Price")].replace(',', '')
-                        last_price = float(last_price_str) if last_price_str else 0.0
-                        day_change_str = row[header.index("Change $")].replace(',', '')
-                        day_change_csv = float(day_change_str) if day_change_str else 0.0
                         
                         holdings.append({
                             "symbol": symbol,
                             "qty": qty,
                             "average_buying_price": avg_cost,
-                            "currency": currency,
-                            "csv_last_price": last_price,
-                            "csv_day_change": day_change_csv
+                            "currency": currency
                         })
                     except Exception as e:
                         print(f"RBC Parser: Skipping row for {symbol} due to error: {e}")
@@ -100,33 +94,74 @@ class RbcGateway(BrokerGateway):
         accounts = self.parse_rbc_files()
         domain_positions = []
         
-        symbols_to_quote = []
+        # Collect all symbols. RBC CSV Currency reflects *account settlement currency*,
+        # not necessarily the stock's native listing market (e.g. GOOG in a CAD RRSP is
+        # still a USD-listed stock on NASDAQ — GOOG.TO does not exist).
+        # Strategy: try USD quote first for every symbol. If it returns a price > 0, use it
+        # and override asset_currency to USD. If USD returns 0, fall back to CAD (.TO).
+        all_symbols = []
         for acc_id, data in accounts.items():
             for h in data['holdings']:
-                symbols_to_quote.append((h['symbol'], h['currency']))
-                
-        # Use questrade quotes (would be cleaner to inject a Pricing/Quote service, but matching existing logic)
-        live_quotes = QuestradeGateway.get_quotes(symbols_to_quote)
-        
+                all_symbols.append(h['symbol'])
+
+        unique_symbols = list(dict.fromkeys(all_symbols))  # deduplicated, order-preserving
+
+        # Fetch as USD first
+        usd_quotes = QuestradeGateway.get_quotes([(sym, 'USD') for sym in unique_symbols])
+        # Fetch as CAD (.TO) for any that return 0 or are missing from USD results
+        cad_fallback_syms = [sym for sym in unique_symbols
+                             if not usd_quotes.get(sym, {}).get('price', 0.0)]
+        cad_quotes = QuestradeGateway.get_quotes([(sym, 'CAD') for sym in cad_fallback_syms]) if cad_fallback_syms else {}
+
+        def resolve_quote(sym: str):
+            """Returns (price, day_change, resolved_currency)."""
+            usd_price = usd_quotes.get(sym, {}).get('price', 0.0)
+            if usd_price and usd_price > 0:
+                return usd_price, usd_quotes[sym].get('day_change', 0.0), 'USD'
+            cad_price = cad_quotes.get(sym, {}).get('price', 0.0)
+            if cad_price and cad_price > 0:
+                return cad_price, cad_quotes[sym].get('day_change', 0.0), 'CAD'
+            return 0.0, 0.0, 'USD'  # Unknown, default to USD
+
         for acc_id, data in accounts.items():
             for h in data['holdings']:
                 sym = h['symbol']
                 qty = h['qty']
                 avg = h['average_buying_price']
-                
-                current_price = live_quotes.get(sym, {}).get('price', h['csv_last_price'])
-                day_change = live_quotes.get(sym, {}).get('day_change', h['csv_day_change'])
-                
-                open_pnl = (current_price - avg) * qty if avg else 0
-                day_pnl = day_change * qty
-                
-                asset_currency = h['currency']
+                csv_currency = h['currency']  # account settlement currency from CSV (e.g. CAD for RRSP)
+
+                live_price, day_change, quote_currency = resolve_quote(sym)
+
+                # The avg_cost in the CSV is denominated in csv_currency (account settlement currency).
+                # To compute valid PnL, market_val must be in the same currency.
+                # If the live quote is in a different currency, convert it.
+                if live_price > 0 and quote_currency != csv_currency:
+                    if quote_currency == 'USD' and csv_currency == 'CAD':
+                        # Convert USD price → CAD
+                        current_price = live_price * cad_usd_rate
+                        day_change_converted = day_change * cad_usd_rate
+                    elif quote_currency == 'CAD' and csv_currency == 'USD':
+                        # Convert CAD price → USD
+                        current_price = live_price / cad_usd_rate
+                        day_change_converted = day_change / cad_usd_rate
+                    else:
+                        current_price = live_price
+                        day_change_converted = day_change
+                else:
+                    current_price = live_price
+                    day_change_converted = day_change
+
+                asset_currency = csv_currency  # report in account's settlement currency
                 is_cad = (asset_currency == "CAD")
-                
+
+                market_val = current_price * qty
+                open_pnl = market_val - (avg * qty)  # both in csv_currency now ✓
+                day_pnl = day_change_converted * qty
+
                 open_pnl_cad, open_pnl_usd = _to_cad_usd(open_pnl, is_cad, cad_usd_rate)
                 day_pnl_cad, day_pnl_usd = _to_cad_usd(day_pnl, is_cad, cad_usd_rate)
-                
-                market_val = current_price * qty
+
+                print(f"RBC: {sym} qty={qty} avg={avg:.2f} live={live_price:.2f}({quote_currency}) display={current_price:.2f}({asset_currency}) mv={market_val:.2f} pnl={open_pnl:.2f}")
                 
                 domain_positions.append(Position(
                     broker=self.broker_name,
