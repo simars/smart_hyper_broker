@@ -9,11 +9,7 @@ from src.domain.models import Position
 # Relative import of questrade get_quotes function if needed 
 # For pure DDD, pricing should be an external service injected into gateways, but we'll import it here directly to match existing behavior.
 import sys
-# Hacky solution to import the old questrade_service for get_quotes until we refactor quotes to an application service
-try:
-    import questrade_service as qs
-except ImportError:
-    import backend.questrade_service as qs
+from src.infrastructure.brokers.questrade_gateway import QuestradeGateway
 
 def _to_cad_usd(value: float, is_cad: bool, cad_usd_rate: float):
     if is_cad:
@@ -113,7 +109,7 @@ class RbcGateway(BrokerGateway):
                 symbols_to_quote.append((h['symbol'], h['currency']))
                 
         # Use questrade quotes (would be cleaner to inject a Pricing/Quote service, but matching existing logic)
-        live_quotes = qs.get_quotes(symbols_to_quote) if qs else {}
+        live_quotes = QuestradeGateway.get_quotes(symbols_to_quote)
         
         for acc_id, data in accounts.items():
             for h in data['holdings']:
