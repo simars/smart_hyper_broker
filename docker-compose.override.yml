@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+      # Cache node_modules and .venv if needed or map dynamically
+    environment:
+      - ENV=development
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+    # Pointing to the new src.api.main path we will create
+
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
