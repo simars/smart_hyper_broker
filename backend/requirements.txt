@@ -5,3 +5,6 @@ websockets
 cachetools
 futu-api
 mcp
+pytest
+pytest-asyncio
+httpx
