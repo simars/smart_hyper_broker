@@ -20,15 +20,16 @@ interface AccountSlot {
   account_id: string;
 }
 
-/** A single row in grouped view — one entry per unique symbol. */
+/** A single row in grouped view — one entry per unique (symbol, currency) pair. */
 interface GroupedPosition {
+  groupKey: string;   // "GOOG:USD", "GOOG:CAD", etc. — unique row key
   symbol: string;
   qty: number;
   average_buying_price: number; // qty-weighted average
   market_val: number;
   open_pnl: number;
   day_pnl: number;
-  currency: string; // "MIX" if positions have different native currencies
+  currency: string;   // always a single currency — never "MIX"
   brokers: string[]; // unique, ordered
   accounts: AccountSlot[];
   rowCount: number;
@@ -36,16 +37,20 @@ interface GroupedPosition {
 }
 
 // ─── Grouping logic ───────────────────────────────────────────────────────────
+// Groups by (symbol, currency) so cross-currency positions for the same symbol
+// produce separate rows — e.g. "GOOG USD" (Questrade) and "GOOG CAD" (RBC RRSP).
 function groupBySymbol(positions: Position[]): GroupedPosition[] {
   const map = new Map<string, GroupedPosition>();
 
   for (const pos of positions) {
-    const existing = map.get(pos.symbol);
+    const key = `${pos.symbol}:${pos.currency}`;
+    const existing = map.get(key);
     if (!existing) {
-      map.set(pos.symbol, {
+      map.set(key, {
+        groupKey: key,
         symbol: pos.symbol,
         qty: pos.qty,
-        average_buying_price: pos.average_buying_price, // will be recalculated below
+        average_buying_price: pos.average_buying_price,
         market_val: pos.market_val,
         open_pnl: pos.open_pnl,
         day_pnl: pos.day_pnl,
@@ -53,12 +58,10 @@ function groupBySymbol(positions: Position[]): GroupedPosition[] {
         brokers: [pos.broker],
         accounts: [{ broker: pos.broker, account_type: pos.account_type, account_id: pos.account_id }],
         rowCount: 1,
-        // store running weighted qty×price for avg calculation
         ..._wtotal(pos.qty, pos.average_buying_price),
       });
     } else {
       const newQty = existing.qty + pos.qty;
-      // qty-weighted average entry price
       const prevWTotal = existing._wtotal ?? existing.qty * existing.average_buying_price;
       const newWTotal = prevWTotal + pos.qty * pos.average_buying_price;
 
@@ -68,7 +71,7 @@ function groupBySymbol(positions: Position[]): GroupedPosition[] {
       existing.market_val += pos.market_val;
       existing.open_pnl += pos.open_pnl;
       existing.day_pnl += pos.day_pnl;
-      existing.currency = existing.currency === pos.currency ? pos.currency : "MIX";
+      // currency stays the same — all positions in a group share the same currency
       existing.rowCount += 1;
       if (!existing.brokers.includes(pos.broker)) existing.brokers.push(pos.broker);
       existing.accounts.push({ broker: pos.broker, account_type: pos.account_type, account_id: pos.account_id });
@@ -76,6 +79,18 @@ function groupBySymbol(positions: Position[]): GroupedPosition[] {
   }
 
   return Array.from(map.values());
+}
+
+// Returns the set of symbols that appear in more than one currency group,
+// so we can show a currency pill on those rows in the grouped view.
+function mixedCurrencySymbols(groups: GroupedPosition[]): Set<string> {
+  const seen = new Map<string, string>(); // symbol → first currency
+  const mixed = new Set<string>();
+  for (const g of groups) {
+    if (!seen.has(g.symbol)) seen.set(g.symbol, g.currency);
+    else if (seen.get(g.symbol) !== g.currency) mixed.add(g.symbol);
+  }
+  return mixed;
 }
 
 // Internal: attach _wtotal to initialise the weighted-average accumulator.
@@ -372,8 +387,9 @@ function TableContent({
 
   // ── Grouped pipeline ──────────────────────────────────────────────────────
   const allGrouped = useMemo(() => groupBySymbol(positions), [positions]);
+  const mixedSymbols = useMemo(() => mixedCurrencySymbols(allGrouped), [allGrouped]);
   const filteredGrouped = useMemo(() =>
-    allGrouped.filter(g => fuzzyMatch(g.symbol, search)),
+    allGrouped.filter(g => fuzzyMatch(`${g.symbol} ${g.currency}`, search)),
     [allGrouped, search]
   );
   const sortedGrouped = useMemo(
@@ -446,13 +462,20 @@ function TableContent({
                         const isOpenPos = g.open_pnl >= 0;
                         const isDayPos  = g.day_pnl  >= 0;
                         const cur = g.currency;
+                        // Show a currency pill when the same symbol exists in multiple currencies
+                        const showCurPill = mixedSymbols.has(g.symbol);
                         return (
-                          <tr key={g.symbol} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                          <tr key={g.groupKey} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
                             {/* Asset Node — grouped */}
                             <td className="px-6 py-4">
                               <div className="flex flex-col gap-1.5">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-bold text-base text-zinc-900 dark:text-zinc-50">{g.symbol}</span>
+                                  {showCurPill && (
+                                    <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wider bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+                                      {cur}
+                                    </span>
+                                  )}
                                   {g.brokers.map(b => <BrokerBadge key={b} broker={b} />)}
                                   {g.rowCount > 1 && (
                                     <span className="px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold border border-indigo-500/20">
@@ -479,22 +502,22 @@ function TableContent({
                             </td>
                             {/* Avg Entry (weighted) */}
                             <td className="px-6 py-4 text-right font-medium text-zinc-700 dark:text-zinc-300">
-                              {cur === "MIX" ? <span className="text-zinc-400">—</span> : <>{formatCurrency(g.average_buying_price, cur)}<CurrencyBadge cur={cur} /></>}
+                              {formatCurrency(g.average_buying_price, cur)}<CurrencyBadge cur={cur} />
                             </td>
                             {/* Market Value */}
                             <td className="px-6 py-4 text-right font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                              {cur === "MIX" ? <span className="text-zinc-400">—</span> : <>{formatCurrency(g.market_val, cur)}<CurrencyBadge cur={cur} /></>}
+                              {formatCurrency(g.market_val, cur)}<CurrencyBadge cur={cur} />
                             </td>
                             {/* Open PnL */}
                             <td className={`px-6 py-4 text-right font-bold tracking-tight ${isOpenPos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                               <div className="flex items-center justify-end gap-1">
                                 {isOpenPos ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                                {cur === "MIX" ? "—" : <>{formatCurrency(g.open_pnl, cur)}<CurrencyBadge cur={cur} /></>}
+                                {formatCurrency(g.open_pnl, cur)}<CurrencyBadge cur={cur} />
                               </div>
                             </td>
                             {/* Day PnL */}
                             <td className={`px-6 py-4 text-right font-bold tracking-tight ${isDayPos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                              {cur === "MIX" ? "—" : <>{isDayPos ? "+" : ""}{formatCurrency(g.day_pnl, cur)}<CurrencyBadge cur={cur} /></>}
+                              {isDayPos ? "+" : ""}{formatCurrency(g.day_pnl, cur)}<CurrencyBadge cur={cur} />
                             </td>
                           </tr>
                         );
