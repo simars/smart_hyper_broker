@@ -1,10 +1,16 @@
 import ssl
 import json
 import urllib.request
-from typing import List, Dict, Any, Tuple
+from typing import List, Tuple
 from cachetools import TTLCache, cached
 from src.domain.models import Position, BrokerError, NormalizedPortfolio
 from src.application.interfaces import BrokerGateway
+
+# Import auth error type for typed error classification
+try:
+    from src.infrastructure.brokers.questrade_token_manager import QuestradeAuthError
+except ImportError:
+    QuestradeAuthError = None  # type: ignore
 
 exchange_rate_cache = TTLCache(maxsize=1, ttl=3600)
 positions_cache = TTLCache(maxsize=1, ttl=60)
@@ -54,9 +60,12 @@ class PortfolioService:
                 raw_positions = gateway.fetch_positions(cad_usd_rate=cad_usd_rate)
                 unified_positions.extend(raw_positions)
             except Exception as e:
+                error_type = "general_error"
+                if QuestradeAuthError and isinstance(e, QuestradeAuthError):
+                    error_type = "auth_error"
                 errors.append(BrokerError(
                     broker=gateway.broker_name,
-                    type="general_error",
+                    type=error_type,
                     message=str(e)
                 ))
 
