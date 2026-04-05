@@ -6,9 +6,6 @@ from typing import List
 from src.application.interfaces import BrokerGateway
 from src.domain.models import Position
 
-# Relative import of questrade get_quotes function if needed 
-# For pure DDD, pricing should be an external service injected into gateways, but we'll import it here directly to match existing behavior.
-import sys
 from src.infrastructure.brokers.questrade_gateway import QuestradeGateway
 
 def _to_cad_usd(value: float, is_cad: bool, cad_usd_rate: float):

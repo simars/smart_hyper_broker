@@ -5,7 +5,7 @@ by analysing the normalized unified position schema directly — no external LLM
 """
 from __future__ import annotations
 from datetime import datetime, timezone
-import normalization
+from typing import List
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -25,12 +25,19 @@ def _fmt_usd(val: float) -> str:
 
 # ─── Manager Thesis ───────────────────────────────────────────────────────────
 
+def _fetch_positions() -> List[dict]:
+    """Lazy import to avoid circular dependency; returns normalized positions as dicts."""
+    from src.api.routers.portfolio import portfolio_service
+    result = portfolio_service.get_normalized_positions()
+    return [p.model_dump() for p in result.positions]
+
+
 def generate_manager_thesis() -> dict:
     """
     Validate whether the current allocations match a defensible macro thesis.
     Returns structured findings: concentration, currency split, PnL health, thesis label.
     """
-    positions = normalization.get_normalized_positions().get("positions", [])
+    positions = _fetch_positions()
     findings = []
 
     if not positions:
@@ -123,7 +130,7 @@ def generate_behavioral_bias() -> dict:
     Identify psychological biases anchoring the portfolio:
     sunk-cost fallacy, home-country bias, concentration risk, recency / momentum chasing.
     """
-    positions = fetch_current_positions()
+    positions = _fetch_positions()
     findings = []
 
     if not positions:
